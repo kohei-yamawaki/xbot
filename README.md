@@ -1,81 +1,152 @@
-# xbot - 株式市場 Twitter Bot
+# xbot — US Stock Trend Bot
 
-株式市場の最新情報を自動取得し、Twitter (X) に投稿するbotです。
+米国株のニュース (Yahoo Finance RSS) と Reddit (r/wallstreetbets 等) のセンチメントを自動収集し、Gemini 2.0 Flash で分析。日次レポートをリポジトリにコミットし、X (Twitter) にも投稿する完全自動ボットです。
+
+**コア哲学: "Zero Runtime Cost"** — レポートは Git コミットとして蓄積されるため、外部サービスが停止しても成果物は失われません。
 
 ## 機能
 
-- 日経平均、NYダウ、S&P500、NASDAQ、ドル円の最新データを自動取得
-- 前日比の変動率を算出し、市場動向のサマリーを生成
-- 指定した時間に自動でTwitterに投稿
+- Yahoo Finance RSS から主要 7 ティッカー (NVDA, AAPL, TSLA, MSFT, AMZN, GOOG, META) のニュースを取得
+- Reddit (wallstreetbets / stocks / investing) の HOT 投稿を取得
+- Gemini 2.0 Flash が「辛口日本人アナリスト」として分析・投稿文を生成
+- Pillow で BULLISH (緑) / BEARISH (赤) のセンチメントカード画像を自動生成
+- `reports/YYYY-MM-DD.md` に日次レポートを追記 (ゼロコスト成果物)
+- X (Twitter) に投稿 (API エラー時はスキップし、レポートのみ保存)
 
-## 投稿例
+## 投稿イメージ
 
 ```
-【株式市場速報 02/15 12:00】
-
-📈 日経平均: 39,150
-  +320 (+0.82%)
-📈 NYダウ: 44,500
-  +150 (+0.34%)
-▲ S&P500: 6,120
-  +15 (+0.25%)
-▼ NASDAQ: 19,800
-  -30 (-0.15%)
-▲ ドル円: 152.30
-  +0.45 (+0.30%)
-
-堅調な値動き。買い意欲が優勢。
-
-#株式投資 #マーケット速報
+🐂 $NVDA 決算期待で半導体セクターに資金流入の兆しか。
+AI需要の継続性には疑問も残るが、短期的には買い圧力が
+優勢とみられる。楽観は禁物だが、流れには逆らえない展開
+かもしれない。 #米国株 #NVDA
 ```
 
 ## セットアップ
 
-### 1. 依存パッケージのインストール
+### 1. リポジトリをクローン
+
+```bash
+git clone https://github.com/<your-username>/xbot.git
+cd xbot
+```
+
+### 2. 依存パッケージのインストール
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 環境変数の設定
+### 3. API キーの取得
 
-`.env.example` をコピーして `.env` を作成し、Twitter API の認証情報を設定します。
+本ボットは以下の外部サービスの API キーが必要です。
+
+| サービス | 必要なキー | 取得先 | 必須 |
+|---------|-----------|--------|------|
+| Google AI Studio | `GOOGLE_API_KEY` | https://aistudio.google.com/apikey | **必須** |
+| Reddit API | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | https://www.reddit.com/prefs/apps | **必須** |
+| X (Twitter) API | `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` | https://developer.x.com | 任意 |
+
+> X API キーがない、または無料枠を超過 (402/403) した場合でも、レポート生成は正常に動作します。
+
+#### Google AI Studio (Gemini)
+
+1. https://aistudio.google.com/apikey にアクセス
+2. 「API キーを作成」をクリック
+3. 発行されたキーを控える
+
+#### Reddit API
+
+1. https://www.reddit.com/prefs/apps にアクセス
+2. 「create another app...」をクリック
+3. **script** タイプを選択し、作成
+4. `client_id` (アプリ名の下に表示) と `client_secret` を控える
+
+#### X (Twitter) API (任意)
+
+1. https://developer.x.com でプロジェクトを作成
+2. User authentication settings で **Read and Write** を有効化
+3. Consumer Keys と Access Token & Secret を控える
+
+### 4. GitHub Secrets の登録
+
+リポジトリの **Settings → Secrets and variables → Actions** で以下を登録します。
+
+| Secret 名 | 値 |
+|-----------|-----|
+| `GOOGLE_API_KEY` | Google AI Studio の API キー |
+| `REDDIT_CLIENT_ID` | Reddit アプリの client_id |
+| `REDDIT_CLIENT_SECRET` | Reddit アプリの client_secret |
+| `X_API_KEY` | X の Consumer Key (任意) |
+| `X_API_SECRET` | X の Consumer Secret (任意) |
+| `X_ACCESS_TOKEN` | X の Access Token (任意) |
+| `X_ACCESS_TOKEN_SECRET` | X の Access Token Secret (任意) |
+
+### 5. 動作確認 (手動実行)
+
+GitHub リポジトリの **Actions** タブ → **US Stock Trend Bot** → **Run workflow** で手動実行できます。
+
+ローカルで試す場合は環境変数を設定してから実行します。
 
 ```bash
-cp .env.example .env
+export GOOGLE_API_KEY="your-key-here"
+export REDDIT_CLIENT_ID="your-client-id"
+export REDDIT_CLIENT_SECRET="your-client-secret"
+
+python -m src.main
 ```
 
-Twitter Developer Portal でAPIキーを取得し、`.env` に記入してください。
+## 自動実行スケジュール
 
-### 3. 実行
+GitHub Actions で以下のスケジュールで自動実行されます。
 
-```bash
-# スケジュール通りに自動投稿（常駐）
-python main.py
+| JST | UTC | 説明 |
+|-----|-----|------|
+| 23:30 | 14:30 | 米国市場オープン直前 |
+| 00:30 | 15:30 | 市場オープン後 |
+| 01:30 | 16:30 | |
+| 02:30 | 17:30 | |
+| 03:30 | 18:30 | |
+| 04:30 | 19:30 | |
+| 05:30 | 20:30 | |
+| 06:30 | 21:30 | 米国市場クローズ後 |
 
-# 起動時に即時実行してからスケジュール稼働
-python main.py --run-now
-```
-
-## 設定
-
-`.env` ファイルで以下をカスタマイズできます：
-
-| 変数 | 説明 | デフォルト |
-|------|------|-----------|
-| `STOCK_TICKERS` | 監視するティッカーシンボル（カンマ区切り） | `^N225,^DJI,^GSPC,^IXIC,USDJPY=X` |
-| `POST_SCHEDULE` | 投稿時刻（24h形式、カンマ区切り） | `08:00,12:00,18:00` |
+> `concurrency: production` により、前回のジョブ完了前に次のジョブが開始されることはありません。
 
 ## プロジェクト構成
 
 ```
 xbot/
-├── main.py              # エントリポイント・スケジューラー
+├── .github/
+│   └── workflows/
+│       └── bot.yml           # GitHub Actions (cron + concurrency)
+├── data/
+│   └── processed_ids.json    # 重複防止用の処理済み ID
+├── reports/                   # 日次レポート (自動生成)
+│   └── 2026-02-15.md
 ├── src/
-│   ├── stock_data.py    # 株式データ取得
-│   ├── post_generator.py # 投稿テキスト生成
-│   └── twitter_client.py # Twitter API クライアント
+│   ├── main.py               # エントリポイント (パイプライン全体)
+│   ├── news_fetcher.py       # Yahoo Finance RSS 取得
+│   ├── reddit_loader.py      # Reddit (PRAW) 取得
+│   ├── llm_engine.py         # Gemini 2.0 Flash 分析
+│   ├── image_gen.py          # Pillow 画像生成
+│   ├── x_client.py           # X (Twitter) 投稿 (エラー耐性)
+│   └── utils.py              # ロガー & 状態管理
 ├── requirements.txt
-├── .env.example
-└── .gitignore
+└── README.md
 ```
+
+## エラー耐性の設計
+
+| 障害パターン | ボットの挙動 |
+|-------------|-------------|
+| RSS 取得失敗 | 該当ティッカーをスキップし、他のティッカーで続行 |
+| Reddit 取得失敗 | ニュースのみで LLM 分析を続行 |
+| LLM 分析失敗 | ジョブを終了 (レポート生成不可のため) |
+| 画像生成失敗 | 画像なしでレポートを生成 |
+| X API 402/403 | ログ出力のみでスキップ。レポートは正常保存 |
+| X API その他エラー | 同上。絶対にクラッシュしない |
+
+## ライセンス
+
+MIT
